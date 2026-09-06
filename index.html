@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>El Resumen</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            color: #f8fafc;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+        .container { max-width: 600px; width: 100%; }
+        .header { text-align: center; margin-bottom: 30px; }
+        h1 {
+            font-size: 2.8rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(to right, #e2e8f0, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 8px;
+        }
+        .subtitle { color: #94a3b8; font-size: 1rem; font-weight: 400; margin-bottom: 10px; }
+        .voice-badge { 
+            display: inline-block;
+            background: rgba(139, 92, 246, 0.15);
+            color: #c4b5fd;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+        
+        .controls { display: flex; gap: 12px; margin-bottom: 20px; }
+        .btn {
+            flex: 1;
+            padding: 16px 24px;
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            box-shadow: 0 10px 25px -5px rgba(139, 92, 246, 0.4);
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 15px 30px -5px rgba(139, 92, 246, 0.6); }
+        .btn-primary:disabled { background: #334155; color: #64748b; box-shadow: none; cursor: not-allowed; }
+        
+        .btn-stop {
+            flex: 0.4;
+            background: #ef4444;
+            box-shadow: 0 10px 25px -5px rgba(239, 68, 68, 0.4);
+            display: none;
+        }
+        .btn-stop:hover { background: #dc2626; transform: translateY(-2px); }
+
+        #status {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #94a3b8;
+            min-height: 24px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .playing-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #8b5cf6;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.8); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+            margin-bottom: 25px;
+            overflow: hidden;
+            display: none;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        #transcript {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 30px;
+            border-radius: 20px;
+            font-size: 1.1rem;
+            line-height: 1.9;
+            color: #cbd5e1;
+            display: none;
+            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3);
+        }
+        .highlight {
+            background: rgba(139, 92, 246, 0.25);
+            color: #f8fafc;
+            padding: 2px 6px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <h1>El Resumen</h1>
+            <p class="subtitle">Noticias globales seleccionadas, como un programa de radio.</p>
+            <span class="voice-badge" id="voiceBadge">🎙️ Detectando mejor voz...</span>
+        </div>
+        
+        <div class="controls">
+            <button id="generateBtn" class="btn btn-primary" onclick="startBriefing()">Generar y Escuchar</button>
+            <button id="stopBtn" class="btn btn-stop" onclick="stopBriefing()">Detener</button>
+        </div>
+        
+        <div id="progress-bar" class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+        <p id="status"></p>
+        
+        <div id="transcript"></div>
+    </div>
+
+    <script>
+        let synthesizer = window.speechSynthesis;
+        let voices = [];
+        let currentUtterance = null;
+        let isPlaying = false;
+
+        function loadVoices() { 
+            voices = synthesizer.getVoices(); 
+            const bestVoice = getBestVoice();
+            if (bestVoice) {
+                document.getElementById('voiceBadge').innerText = `🎙️ Usando: ${bestVoice.name}`;
+            }
+        }
+        loadVoices();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = loadVoices;
+        }
+
+        // Target high-quality Spanish voices
+        function getBestVoice() {
+            const preferred = [
+                "Monica",           // iOS Spain Spanish female
+                "Jorge",            // iOS Spain Spanish male
+                "Paulina",          // iOS Mexico Spanish female
+                "Diego",            // iOS Spanish male
+                "Natural",          // Windows natural voices
+                "Neural",           // Windows neural voices
+                "Google español",   // Chrome Spanish
+                "Microsoft Helena", // Windows Spanish female
+                "Microsoft Pablo"   // Windows Spanish male
+            ];
+            
+            for (let keyword of preferred) {
+                const match = voices.find(v => v.name.includes(keyword) && v.lang.startsWith('es'));
+                if (match) return match;
+            }
+            return voices.find(v => v.lang.startsWith('es')) || voices[0];
+        }
+
+        function cleanText(text) {
+            if (!text) return "";
+            return text
+                .replace(/\[.*?\]\(.*?\)/g, '')
+                .replace(/https?:\/\/\S+/g, '')
+                .replace(/Published Time:.*?Z/gi, '')
+                .replace(/Skip to content/gi, '')
+                .replace(/<[^>]*>/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        async function fetchBriefingData() {
+            updateStatus("Obteniendo noticias principales...");
+            document.getElementById('progress-bar').style.display = 'block';
+            document.getElementById('progress-fill').style.width = '50%';
+
+            // El País - Spain's leading newspaper
+            const RSS_URL = "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada";
+            const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(RSS_URL)}`;
+            
+            const response = await fetch(apiUrl);
+            if (!response.ok) throw new Error("Error al obtener noticias");
+            
+            const data = await response.json();
+            if (data.status !== 'ok') throw new Error("Servicio de noticias devolvió un error");
+            
+            const items = data.items.slice(0, 5);
+            const stories = [];
+
+            for (let item of items) {
+                const title = item.title || "Sin título";
+                let rawContext = item.content || item.description || "";
+                let context = cleanText(rawContext);
+                
+                if (context.length > 180) context = context.substring(0, 180).trim() + "...";
+                else if (context.length < 40) context = "Los detalles aún están emergiendo en esta historia en desarrollo.";
+                
+                stories.push({ title, context });
+            }
+            
+            document.getElementById('progress-fill').style.width = '100%';
+            setTimeout(() => { document.getElementById('progress-bar').style.display = 'none'; }, 500);
+            return stories;
+        }
+
+        function buildRadioScript(stories) {
+            const today = new Intl.DateTimeFormat('es-ES', { 
+                weekday: 'long', day: 'numeric', month: 'long' 
+            }).format(new Date());
+
+            let script = `Bienvenido a tu resumen global para ${today}. `;
+            script += "Estoy aquí con las principales noticias que están marcando nuestro mundo ahora mismo. Comencemos.\n\n";
+            
+            script += `Nuestra noticia principal: ${stories[0].title}. ${stories[0].context}\n\n`;
+            
+            if (stories[1]) {
+                script += `Pasando a desarrollos internacionales. ${stories[1].title}. ${stories[1].context}\n\n`;
+            }
+            if (stories[2]) {
+                script += `En otras noticias significativas. ${stories[2].title}. ${stories[2].context}\n\n`;
+            }
+            if (stories[3]) {
+                script += `Mientras tanto, en el escenario global. ${stories[3].title}. ${stories[3].context}\n\n`;
+            }
+            if (stories[4]) {
+                script += `Y finalmente, siguiendo de cerca. ${stories[4].title}. ${stories[4].context}\n\n`;
+            }
+            
+            script += `Ese es tu resumen de hoy. Gracias por escuchar, y mantente informado.`;
+            return script;
+        }
+
+        function speakScript(script) {
+            updateStatus("Reproduciendo resumen...", true);
+            document.getElementById('stopBtn').style.display = 'block';
+            synthesizer.cancel();
+
+            const sentences = script.match(/[^\.!\?]+[\.!\?]+/g) || [script];
+            const outputDiv = document.getElementById('transcript');
+            outputDiv.style.display = 'block';
+            outputDiv.innerHTML = sentences.map((s, i) => `<span id="sent-${i}">${s.trim()} </span>`).join('');
+
+            let current = 0;
+            isPlaying = true;
+
+            function speakNext() {
+                if (!isPlaying || current >= sentences.length) {
+                    finishBriefing();
+                    return;
+                }
+
+                document.querySelectorAll('#transcript span').forEach(el => el.classList.remove('highlight'));
+                const currentEl = document.getElementById(`sent-${current}`);
+                if (currentEl) {
+                    currentEl.classList.add('highlight');
+                    currentEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+
+                currentUtterance = new SpeechSynthesisUtterance(sentences[current]);
+                currentUtterance.voice = getBestVoice();
+                currentUtterance.rate = 0.85;
+                currentUtterance.pitch = 1.0;
+                currentUtterance.volume = 1.0;
+
+                currentUtterance.onend = () => { 
+                    current++; 
+                    speakNext(); 
+                };
+                currentUtterance.onerror = () => { 
+                    current++; 
+                    speakNext(); 
+                };
+
+                synthesizer.speak(currentUtterance);
+            }
+
+            speakNext();
+        }
+
+        async function startBriefing() {
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            document.getElementById('transcript').style.display = 'none';
+            document.getElementById('status').innerText = "";
+
+            try {
+                const stories = await fetchBriefingData();
+                updateStatus("Preparando tu resumen...");
+                const script = buildRadioScript(stories);
+                speakScript(script);
+            } catch (error) {
+                console.error("Briefing Error:", error);
+                updateStatus(`Error: ${error.message}. Por favor, inténtalo de nuevo.`);
+                btn.disabled = false;
+            }
+        }
+
+        function stopBriefing() {
+            isPlaying = false;
+            synthesizer.cancel();
+            finishBriefing();
+        }
+
+        function finishBriefing() {
+            isPlaying = false;
+            updateStatus("Resumen completo.");
+            document.getElementById('generateBtn').disabled = false;
+            document.getElementById('stopBtn').style.display = 'none';
+            document.querySelectorAll('#transcript span').forEach(el => el.classList.remove('highlight'));
+        }
+
+        function updateStatus(msg, isPlaying = false) {
+            const el = document.getElementById('status');
+            if (isPlaying) {
+                el.innerHTML = `<span class="playing-indicator"></span>${msg}`;
+            } else {
+                el.innerText = msg;
+            }
+        }
+        
+        window.startBriefing = startBriefing;
+        window.stopBriefing = stopBriefing;
+    </script>
+</body>
+</html>
