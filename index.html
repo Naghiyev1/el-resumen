@@ -167,18 +167,11 @@
             speechSynthesis.onvoiceschanged = loadVoices;
         }
 
-        // Target high-quality Spanish voices
         function getBestVoice() {
             const preferred = [
-                "Monica",           // iOS Spain Spanish female
-                "Jorge",            // iOS Spain Spanish male
-                "Paulina",          // iOS Mexico Spanish female
-                "Diego",            // iOS Spanish male
-                "Natural",          // Windows natural voices
-                "Neural",           // Windows neural voices
-                "Google español",   // Chrome Spanish
-                "Microsoft Helena", // Windows Spanish female
-                "Microsoft Pablo"   // Windows Spanish male
+                "Monica", "Jorge", "Paulina", "Diego",
+                "Natural", "Neural",
+                "Google español", "Microsoft Helena", "Microsoft Pablo"
             ];
             
             for (let keyword of preferred) {
@@ -188,6 +181,7 @@
             return voices.find(v => v.lang.startsWith('es')) || voices[0];
         }
 
+        // Aggressive text cleaner
         function cleanText(text) {
             if (!text) return "";
             return text
@@ -196,8 +190,36 @@
                 .replace(/Published Time:.*?Z/gi, '')
                 .replace(/Skip to content/gi, '')
                 .replace(/<[^>]*>/g, '')
+                .replace(/&quot;/g, '"')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
                 .replace(/\s+/g, ' ')
                 .trim();
+        }
+
+        // SMART TRUNCATION: Cut at the last complete sentence within the limit
+        function smartTruncate(text, maxLength = 250) {
+            if (text.length <= maxLength) return text;
+            
+            // Find all sentence boundaries (periods, question marks, exclamation marks)
+            const sentenceEndings = /[.!?]+/g;
+            let lastGoodPosition = 0;
+            let match;
+            
+            while ((match = sentenceEndings.exec(text)) !== null) {
+                if (match.index > maxLength) break;
+                lastGoodPosition = match.index + match[0].length;
+            }
+            
+            // If we found a sentence ending within the limit, cut there
+            if (lastGoodPosition > 50) {
+                return text.substring(0, lastGoodPosition).trim();
+            }
+            
+            // Fallback: if no good sentence boundary found, just return first 250 chars
+            // (this should rarely happen with well-formed news descriptions)
+            return text.substring(0, maxLength).trim() + "...";
         }
 
         async function fetchBriefingData() {
@@ -205,7 +227,6 @@
             document.getElementById('progress-bar').style.display = 'block';
             document.getElementById('progress-fill').style.width = '50%';
 
-            // El País - Spain's leading newspaper
             const RSS_URL = "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada";
             const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(RSS_URL)}`;
             
@@ -223,8 +244,13 @@
                 let rawContext = item.content || item.description || "";
                 let context = cleanText(rawContext);
                 
-                if (context.length > 180) context = context.substring(0, 180).trim() + "...";
-                else if (context.length < 40) context = "Los detalles aún están emergiendo en esta historia en desarrollo.";
+                // SMART TRUNCATION: Cut at sentence boundaries, not mid-sentence
+                context = smartTruncate(context, 250);
+                
+                // If still too short, use fallback
+                if (context.length < 40) {
+                    context = "Los detalles aún están emergiendo en esta historia en desarrollo.";
+                }
                 
                 stories.push({ title, context });
             }
