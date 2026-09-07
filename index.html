@@ -181,12 +181,10 @@
             return voices.find(v => v.lang.startsWith('es')) || voices[0];
         }
 
-        // Improved text cleaner - extracts link text before removing tags
+        // Clean text - preserves link text, removes HTML tags and RSS junk
         function cleanText(text) {
             if (!text) return "";
             
-            // First, extract text from links before removing tags
-            // This preserves the link text instead of losing it
             let clean = text;
             
             // Remove RSS junk first
@@ -217,7 +215,7 @@
                 .replace(/&nbsp;/g, ' ')
                 .replace(/&#\d+;/g, ' ');
             
-            // Fix common issues
+            // Clean up spacing and punctuation
             clean = clean
                 .replace(/\s+/g, ' ')
                 .replace(/\s+,\s+/g, ', ')
@@ -227,33 +225,6 @@
                 .trim();
             
             return clean;
-        }
-
-        // Detect and fix incomplete sentences
-        function fixIncompleteSentences(text) {
-            // Split into sentences
-            const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-            
-            const fixedSentences = sentences.map(sentence => {
-                let fixed = sentence.trim();
-                
-                // Remove sentences that are too short or incomplete
-                if (fixed.length < 15) return null;
-                
-                // Fix common patterns of incomplete text
-                // "en , " → remove the orphan comma
-                fixed = fixed.replace(/\ben\s+,/g, 'en');
-                fixed = fixed.replace(/,\s+ocurrida/g, ', ocurrida');
-                
-                // Remove sentences with obvious gaps (multiple spaces, orphan punctuation)
-                if (/\s{2,}/.test(fixed) || /^\s*[,;.]/.test(fixed) || /[,;.]\s*$/.test(fixed)) {
-                    return null;
-                }
-                
-                return fixed;
-            }).filter(s => s !== null);
-            
-            return fixedSentences.join(' ');
         }
 
         async function fetchBriefingData() {
@@ -277,7 +248,6 @@
                 const title = item.title || "Sin título";
                 let rawContext = item.content || item.description || "";
                 let context = cleanText(rawContext);
-                context = fixIncompleteSentences(context);
                 
                 if (context.length < 40) {
                     context = "Los detalles aún están emergiendo en esta historia en desarrollo.";
