@@ -181,34 +181,79 @@
             return voices.find(v => v.lang.startsWith('es')) || voices[0];
         }
 
-        // Clean text - removes RSS junk including Spanish "Read more" links
+        // Improved text cleaner - extracts link text before removing tags
         function cleanText(text) {
             if (!text) return "";
-            return text
-                .replace(/\[.*?\]\(.*?\)/g, '')
-                .replace(/https?:\/\/\S+/g, '')
-                .replace(/Published Time:.*?Z/gi, '')
-                .replace(/Skip to content/gi, '')
-                .replace(/<[^>]*>/g, '')
-                .replace(/&quot;/g, '"')
-                .replace(/&amp;/g, '&')
-                .replace(/&lt;/g, '<')
-                .replace(/&gt;/g, '>')
-                .replace(/&nbsp;/g, ' ')
-                // Remove common Spanish RSS junk
+            
+            // First, extract text from links before removing tags
+            // This preserves the link text instead of losing it
+            let clean = text;
+            
+            // Remove RSS junk first
+            clean = clean
                 .replace(/Seguir leyendo/gi, '')
                 .replace(/Leer más/gi, '')
                 .replace(/Continuar leyendo/gi, '')
                 .replace(/Ver más/gi, '')
                 .replace(/Ampliar información/gi, '')
-                .replace(/Suscríbete.*?$/gi, '')
-                .replace(/Recibe.*?newsletter.*?$/gi, '')
-                // Remove common English RSS junk too
                 .replace(/Read more/gi, '')
                 .replace(/Continue reading/gi, '')
+                .replace(/Suscríbete.*?$/gi, '')
                 .replace(/Subscribe.*?$/gi, '')
+                .replace(/Recibe.*?newsletter.*?$/gi, '');
+            
+            // Extract text from links: <a href="...">TEXT</a> → TEXT
+            clean = clean.replace(/<a[^>]*>(.*?)<\/a>/gi, '$1');
+            
+            // Remove remaining HTML tags
+            clean = clean.replace(/<[^>]*>/g, '');
+            
+            // Decode HTML entities
+            clean = clean
+                .replace(/&quot;/g, '"')
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&nbsp;/g, ' ')
+                .replace(/&#\d+;/g, ' ');
+            
+            // Fix common issues
+            clean = clean
                 .replace(/\s+/g, ' ')
+                .replace(/\s+,\s+/g, ', ')
+                .replace(/\s+\.\s+/g, '. ')
+                .replace(/,\s*,/g, ',')
+                .replace(/\.\s+\./g, '.')
                 .trim();
+            
+            return clean;
+        }
+
+        // Detect and fix incomplete sentences
+        function fixIncompleteSentences(text) {
+            // Split into sentences
+            const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+            
+            const fixedSentences = sentences.map(sentence => {
+                let fixed = sentence.trim();
+                
+                // Remove sentences that are too short or incomplete
+                if (fixed.length < 15) return null;
+                
+                // Fix common patterns of incomplete text
+                // "en , " → remove the orphan comma
+                fixed = fixed.replace(/\ben\s+,/g, 'en');
+                fixed = fixed.replace(/,\s+ocurrida/g, ', ocurrida');
+                
+                // Remove sentences with obvious gaps (multiple spaces, orphan punctuation)
+                if (/\s{2,}/.test(fixed) || /^\s*[,;.]/.test(fixed) || /[,;.]\s*$/.test(fixed)) {
+                    return null;
+                }
+                
+                return fixed;
+            }).filter(s => s !== null);
+            
+            return fixedSentences.join(' ');
         }
 
         async function fetchBriefingData() {
@@ -225,7 +270,6 @@
             const data = await response.json();
             if (data.status !== 'ok') throw new Error("Servicio de noticias devolvió un error");
             
-            // Get 10 stories
             const items = data.items.slice(0, 10);
             const stories = [];
 
@@ -233,8 +277,8 @@
                 const title = item.title || "Sin título";
                 let rawContext = item.content || item.description || "";
                 let context = cleanText(rawContext);
+                context = fixIncompleteSentences(context);
                 
-                // Only add fallback if the text is extremely short
                 if (context.length < 40) {
                     context = "Los detalles aún están emergiendo en esta historia en desarrollo.";
                 }
@@ -255,10 +299,8 @@
             let script = `Bienvenido a tu resumen global para ${today}. `;
             script += "Estoy aquí con las 10 principales noticias que están marcando nuestro mundo ahora mismo. Comencemos.\n\n";
             
-            // Story 1
             script += `Nuestra noticia principal: ${stories[0].title}. ${stories[0].context}\n\n`;
             
-            // Stories 2-10 with varied transitions
             const transitions = [
                 "Pasando a desarrollos internacionales.",
                 "En otras noticias significativas.",
