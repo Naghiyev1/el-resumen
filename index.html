@@ -181,7 +181,7 @@
             return voices.find(v => v.lang.startsWith('es')) || voices[0];
         }
 
-        // Clean text but DO NOT truncate
+        // Clean text - removes RSS junk including Spanish "Read more" links
         function cleanText(text) {
             if (!text) return "";
             return text
@@ -195,6 +195,18 @@
                 .replace(/&lt;/g, '<')
                 .replace(/&gt;/g, '>')
                 .replace(/&nbsp;/g, ' ')
+                // Remove common Spanish RSS junk
+                .replace(/Seguir leyendo/gi, '')
+                .replace(/Leer más/gi, '')
+                .replace(/Continuar leyendo/gi, '')
+                .replace(/Ver más/gi, '')
+                .replace(/Ampliar información/gi, '')
+                .replace(/Suscríbete.*?$/gi, '')
+                .replace(/Recibe.*?newsletter.*?$/gi, '')
+                // Remove common English RSS junk too
+                .replace(/Read more/gi, '')
+                .replace(/Continue reading/gi, '')
+                .replace(/Subscribe.*?$/gi, '')
                 .replace(/\s+/g, ' ')
                 .trim();
         }
@@ -213,7 +225,7 @@
             const data = await response.json();
             if (data.status !== 'ok') throw new Error("Servicio de noticias devolvió un error");
             
-            // Get 10 stories instead of 5
+            // Get 10 stories
             const items = data.items.slice(0, 10);
             const stories = [];
 
@@ -222,7 +234,6 @@
                 let rawContext = item.content || item.description || "";
                 let context = cleanText(rawContext);
                 
-                // NO TRUNCATION - use full context
                 // Only add fallback if the text is extremely short
                 if (context.length < 40) {
                     context = "Los detalles aún están emergiendo en esta historia en desarrollo.";
@@ -247,7 +258,7 @@
             // Story 1
             script += `Nuestra noticia principal: ${stories[0].title}. ${stories[0].context}\n\n`;
             
-            // Stories 2-9 with varied transitions
+            // Stories 2-10 with varied transitions
             const transitions = [
                 "Pasando a desarrollos internacionales.",
                 "En otras noticias significativas.",
